@@ -12,9 +12,6 @@ def repl_quoted(m):
 def unquote(text):
     return quoted_re.sub(repl_quoted,text)
 
-model_long = tensorflow.keras.models.load_model(params.filename_long)
-model_short = tensorflow.keras.models.load_model(params.filename_short)
-
 def sample(preds, temperature=0.35):
     preds = numpy.asarray(preds).astype('float64')
     preds = numpy.log(preds) / temperature
@@ -23,10 +20,8 @@ def sample(preds, temperature=0.35):
     probas = numpy.random.multinomial(1, preds, 1)
     return numpy.argmax(probas)
 
-x_long = numpy.zeros((1, params.maxlen_long, 96))
-x_short = numpy.zeros((1, params.maxlen_short, 96))
-
-maxlen_transition = max(params.maxlen_long - params.maxlen_short, (params.maxlen_long + params.maxlen_short) // 2)
+models = list(map(lambda p: tensorflow.keras.models.load_model(p.filename), params.params))
+xs = list(map(lambda p: numpy.zeros((1,p.maxlen,96)), params.params))
 
 for text in sys.argv[1:]:
     have_start = False
@@ -34,25 +29,37 @@ for text in sys.argv[1:]:
     start_dots = 0
     end_dots = 0
     for _ in range(200):
-        if not have_start:
-            if len(text) < maxlen_transition:
-                x_short.fill(0)
-                for i in range(min(len(text), params.maxlen_short)):
-                    c = min(95,max(0,ord(text[i])-32))
-                    x_short[0,i,c] = 1
-                    pass
-                y = model_short.predict(x_short, verbose=0)
-                c = sample(y[0,0,:])
-                pass
+        x = xs[0]
+        model = models[0]
+        maxlen = params.params[0].maxlen
+        delay_head = False
+        delay_tail = False
+        if len(text) < params.params[0].runlen[1]:
+            if text[0].isupper():
+                delay_head = True
             else:
-                x_long.fill(0)
-                for i in range(min(len(text), params.maxlen_long)):
-                    c = min(95,max(0,ord(text[i])-32))
-                    x_long[0,i,c] = 1
-                    pass
-                y = model_long.predict(x_long, verbose=0)
-                c = sample(y[0,0,:])
+                delay_tail = True
                 pass
+            pass
+        for i in range(len(params.params)):
+            if len(text) >= params.params[i].runlen[0] and (params.params[i].runlen[1] == None or len(text) < params.params[i].runlen[1]):
+                x = xs[i]
+                model = models[i]
+                maxlen = params.params[i].maxlen
+                break
+            pass
+        if not have_start and (not delay_head or have_end):
+            temperature = 0.2
+            if text[0] == ' ':
+                temperature = 0.5
+                pass
+            x.fill(0)
+            for i in range(min(len(text), maxlen)):
+                c = min(95,max(0,ord(text[i])-32))
+                x[0,i,c] = 1
+                pass
+            y = model.predict(x, verbose=0)
+            c = sample(y[0,0,:], temperature=temperature)
             if c == 95:
                 if start_dots < 2:
                     have_start = True
@@ -68,27 +75,19 @@ for text in sys.argv[1:]:
                 text = chr(32+c) + text
                 pass
             pass
-        if not have_end:
-            if len(text) < maxlen_transition:
-                x_short.fill(0)
-                imax = min(len(text), params.maxlen_short)
-                for i in range(imax):
-                    c = min(95,max(0,ord(text[len(text)-imax+i])-32))
-                    x_short[0,params.maxlen_short-imax+i,c] = 1
-                    pass
-                y = model_short.predict(x_short, verbose=0)
-                c = sample(y[0,1,:])
+        if not have_end and (not delay_tail or have_start):
+            temperature = 0.2
+            if text[-1] == ' ':
+                temperature = 0.5
                 pass
-            else:
-                x_long.fill(0)
-                imax = min(len(text), params.maxlen_long)
-                for i in range(imax):
-                    c = min(95,max(0,ord(text[len(text)-imax+i])-32))
-                    x_long[0,params.maxlen_long-imax+i,c] = 1
-                    pass
-                y = model_long.predict(x_long, verbose=0)
-                c = sample(y[0,1,:])
+            x.fill(0)
+            imax = min(len(text), maxlen)
+            for i in range(imax):
+                c = min(95,max(0,ord(text[len(text)-imax+i])-32))
+                x[0,maxlen-imax+i,c] = 1
                 pass
+            y = model.predict(x, verbose=0)
+            c = sample(y[0,1,:], temperature=temperature)
             if c == 95:
                 if end_dots < 2:
                     have_end = True

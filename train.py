@@ -31,7 +31,9 @@ def quote(str):
     return q
 
 tws = []
-for file in ['condensed_2018.json', 'condensed_2017.json', 'condensed_2016.json']:
+# files = ['2019-10.json', '2019-09.json', '2019-08.json', '2019-07.json', '2019-06.json', '2019-05.json', '2019-04.json', '2019-03.json', '2019-02.json', '2019-01.json', 'condensed_2018.json', 'condensed_2017.json', 'condensed_2016.json']
+files = ['2019-10.json', '2019-09.json', '2019-08.json', '2019-07.json', '2019-06.json', '2019-05.json', '2019-04.json', '2019-03.json', '2019-02.json', '2019-01.json']
+for file in files:
     with open(file, 'r') as f:
         tws += json.load(f, object_hook=get_text)
         pass
@@ -44,7 +46,7 @@ for t in tws:
         pass
     pass
 
-def train(filename, maxlen, step):
+def train(filename, maxlen, step, epochs):
     global size, tws
     ntrain = size // step + 1
     window = [95 for i in range(maxlen+2)]
@@ -92,10 +94,11 @@ def train(filename, maxlen, step):
         model.add(tensorflow.keras.layers.Reshape((2,96)))
         model.compile(loss='categorical_crossentropy', optimizer=tensorflow.keras.optimizers.RMSprop(learning_rate=0.01))
         pass
-    model.fit(x, y, epochs=10, batch_size=4096)
+    model.fit(x, y, epochs=epochs, batch_size=4096)
     model.save(filename)
     del model
     pass
 
-train(params.filename_short, params.maxlen_short, params.step_short)
-train(params.filename_long, params.maxlen_long, params.step_long)
+for param in params.params:
+    train(param.filename, param.maxlen, param.step, param.epochs)
+    pass
